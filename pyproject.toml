@@ -81,7 +81,7 @@ test-command = "uv run --no-project --with {wheel} --with pytest pytest {project
 manylinux-x86_64-image  = "manylinux_2_28"
 manylinux-aarch64-image = "manylinux_2_28"
 # Install gfortran + OpenMP runtime in the container before the build
-before-all = "dnf install -y gcc-gfortran libgomp libgomp-devel"
+before-all = "dnf install -y gcc-gfortran || apk add gfortran"
 
 [tool.cibuildwheel.macos]
 before-all = "brew install gcc"

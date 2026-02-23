@@ -30,3 +30,7 @@ wheels/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Local CI test script and its output (not for committing)
+test_ci_local.sh
+wheelhouse_local/
