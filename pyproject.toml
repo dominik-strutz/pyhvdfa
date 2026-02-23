@@ -88,8 +88,8 @@ before-all = "brew install gcc"
 environment = { MACOSX_DEPLOYMENT_TARGET = "12.0" }
 
 [tool.cibuildwheel.windows]
-before-all = "choco install mingw -y"
-environment = { FC = "gfortran", CC = "gcc", PATH = "C:\\ProgramData\\mingw64\\mingw64\\bin;{PATH}" }
+# gfortran is installed via a workflow step before cibuildwheel runs
+environment = { FC = "gfortran", CC = "gcc" }
 
 # ---------------------------------------------------------------------------
 # ruff — linting and formatting

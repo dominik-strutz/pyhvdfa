@@ -37,10 +37,23 @@ jobs:
         with:
           platforms: arm64
 
+      - name: Install gfortran (Windows)
+        if: matrix.os == 'windows-latest'
+        run: choco install mingw -y --no-progress
+        shell: cmd
+
+      - name: Install uv (macOS)
+        if: startsWith(matrix.os, 'macos')
+        uses: astral-sh/setup-uv@v5
+
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.22.0
         env:
           CIBW_ARCHS: ${{ matrix.arch }}
+          CIBW_ENVIRONMENT_WINDOWS: >-
+            FC="gfortran"
+            CC="gcc"
+            PATH="C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin;{PATH}"
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
