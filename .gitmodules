@@ -1,0 +1,3 @@
+[submodule "fortran_src/HV-DFA"]
+	path = fortran_src/HV-DFA
+	url = https://github.com/agarcia-jerez/HV-DFA

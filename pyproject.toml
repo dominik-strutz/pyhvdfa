@@ -1,0 +1,113 @@
+[build-system]
+requires = [
+  "meson-python>=0.16.0",
+  "numpy>=1.23",
+]
+build-backend = "mesonpy"
+
+# ---------------------------------------------------------------------------
+[project]
+name = "pyhvdfa"
+version = "0.1.0"
+description = "Diffuse-field H/V spectral ratio – Python wrapper for HV-DFA"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+dependencies = [
+  "numpy>=1.23",
+]
+keywords = ["seismology", "HVSR", "H/V", "ambient noise", "surface waves"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Physics",
+  "License :: Free for non-commercial use",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Fortran",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+]
+
+[[project.authors]]
+name = "Dominik Strutz"
+
+[project.urls]
+Homepage = "https://github.com/dominik-strutz/pyhvdfa"
+Repository = "https://github.com/dominik-strutz/pyhvdfa"
+"Bug Tracker" = "https://github.com/dominik-strutz/pyhvdfa/issues"
+
+[project.optional-dependencies]
+test = ["pytest", "numpy"]
+
+[dependency-groups]
+dev = [
+  "pytest>=7",
+  "matplotlib>=3.7",
+  "ipykernel>=6",
+  "jupyter>=1.0",
+  # keep build tools in the venv so the meson-python editable loader can rebuild
+  "meson>=1.1.0",
+  "meson-python>=0.16.0",
+  "ninja",
+]
+
+# ---------------------------------------------------------------------------
+# meson-python configuration
+# Extra meson setup arguments can go here if needed, e.g. to enable
+# debug builds or pass custom Fortran compiler flags.
+[tool.meson-python.args]
+setup = []
+
+# ---------------------------------------------------------------------------
+# cibuildwheel — binary wheel production
+# Run via: uvx cibuildwheel --platform linux
+[tool.cibuildwheel]
+# Build CPython 3.9 – 3.13 on x86-64 Linux; skip 32-bit and PyPy
+build  = "cp39-* cp310-* cp311-* cp312-* cp313-*"
+skip   = "*-manylinux_i686 *-musllinux_i686 *-win32"
+
+# Use uv as the fast build frontend inside the manylinux container
+build-frontend = "build[uv]"
+
+# Install uv so that the test-command can use `uv run`
+before-test = "pip install uv"
+# Test the wheel after building
+test-requires = ["pytest", "numpy"]
+test-command = "uv run --no-project --with {wheel} --with pytest pytest {project}/tests -v"
+
+[tool.cibuildwheel.linux]
+# Use manylinux_2_28 (AlmaLinux 8, GLIBC >= 2.28) for broad Linux compatibility
+manylinux-x86_64-image  = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
+# Install gfortran + OpenMP runtime in the container before the build
+before-all = """
+    yum install -y gcc-gfortran libgomp libgomp-devel || \
+    apt-get install -y gfortran libgomp1
+"""
+
+[tool.cibuildwheel.macos]
+before-all = "brew install gcc"
+environment = { MACOSX_DEPLOYMENT_TARGET = "12.0" }
+
+[tool.cibuildwheel.windows]
+before-all = "choco install mingw -y"
+environment = { FC = "gfortran", CC = "gcc", PATH = "C:\\ProgramData\\mingw64\\mingw64\\bin;{PATH}" }
+
+# ---------------------------------------------------------------------------
+# ruff — linting and formatting
+[tool.ruff]
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+# Use double quotes to match Black style
+quote-style = "double"
+
+# ---------------------------------------------------------------------------
+# pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]

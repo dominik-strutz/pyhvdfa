@@ -1,0 +1,36 @@
+! hv_core.pyf - f2py signature file for pyhvdfa
+!
+! Provides the Python-visible interface for the COMPUTE_HV subroutine.
+! Using a .pyf file lets us:
+!   - hide the array-length arguments (ncapas_in, nx_in) from Python callers
+!   - declare correct dtypes (float64 / float32) matching the Fortran modules
+!   - avoid f2py needing to parse the Fortran INCLUDE chain at build time
+!
+! Build: this file is consumed by meson (custom_target) to generate the C
+! extension-module glue via: python -m numpy.f2py hv_core.pyf --lower
+
+python module _hv_core
+  interface
+    subroutine compute_hv(ncapas_in, alfa_in, bta_in, h_in, rho_in,  &
+                          nx_in, x_in, nmr, nml, nks_in,              &
+                          shdamp_in, psvdamp_in, prec_in,              &
+                          hv_out)
+      ! ncapas_in is hidden and derived from the length of alfa_in
+      integer intent(hide), depend(alfa_in) :: ncapas_in = len(alfa_in)
+      real(8) dimension(ncapas_in), intent(in) :: alfa_in
+      real(8) dimension(ncapas_in), depend(ncapas_in), intent(in) :: bta_in
+      real(8) dimension(ncapas_in), depend(ncapas_in), intent(in) :: h_in
+      real(8) dimension(ncapas_in), depend(ncapas_in), intent(in) :: rho_in
+      ! nx_in is hidden and derived from the length of x_in
+      integer intent(hide), depend(x_in) :: nx_in = len(x_in)
+      real(4) dimension(nx_in), intent(in) :: x_in
+      integer intent(in) :: nmr
+      integer intent(in) :: nml
+      integer intent(in) :: nks_in
+      real(4) intent(in) :: shdamp_in
+      real(4) intent(in) :: psvdamp_in
+      real(4) intent(in) :: prec_in
+      real(8) dimension(nx_in), depend(nx_in), intent(out) :: hv_out
+    end subroutine compute_hv
+  end interface
+end python module _hv_core
