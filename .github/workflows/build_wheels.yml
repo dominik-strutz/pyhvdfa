@@ -42,10 +42,14 @@ jobs:
         run: choco install mingw -y --no-progress
         shell: cmd
 
+      # uv must be on the host PATH for build[uv] frontend on macOS and Windows
+      # (Linux builds run in Docker containers and install uv themselves)
+      - name: Install uv (macOS and Windows)
+        if: "!startsWith(matrix.os, 'ubuntu')"
+        uses: astral-sh/setup-uv@v5
+
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.22.0
-        with:
-          extras: uv
         env:
           CIBW_ARCHS: ${{ matrix.arch }}
           CIBW_ENVIRONMENT_WINDOWS: >-
