@@ -15,6 +15,9 @@ python module _hv_core
                           nx_in, x_in, nmr, nml, nks_in,              &
                           shdamp_in, psvdamp_in, prec_in,              &
                           hv_out)
+      ! Release the GIL so multiple threads can call COMPUTE_HV
+      ! concurrently (requires THREADPRIVATE module variables).
+      threadsafe
       ! ncapas_in is hidden and derived from the length of alfa_in
       integer intent(hide), depend(alfa_in) :: ncapas_in = len(alfa_in)
       real(8) dimension(ncapas_in), intent(in) :: alfa_in

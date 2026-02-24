@@ -16,14 +16,16 @@ Layer(thickness, vp, vs, density)
 from __future__ import annotations
 
 import math
+import os
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
-from pyhvdfa._types import Layer, Model, HVResult
 from pyhvdfa import _hv_core
+from pyhvdfa._types import HVResult, Layer, Model
 
 __version__ = "0.1.0"
-__all__ = ["compute_hv", "Layer", "Model", "HVResult"]
+__all__ = ["compute_hv", "compute_hv_batch", "Layer", "Model", "HVResult"]
 
 
 def compute_hv(
@@ -95,7 +97,9 @@ def compute_hv(
     if freq_min <= 0.0:
         raise ValueError(f"freq_min must be positive, got {freq_min}")
     if freq_max <= freq_min:
-        raise ValueError(f"freq_max ({freq_max}) must be greater than freq_min ({freq_min})")
+        raise ValueError(
+            f"freq_max ({freq_max}) must be greater than freq_min ({freq_min})"
+        )
     if n_freq < 2:
         raise ValueError(f"n_freq must be ≥ 2, got {n_freq}")
     if n_modes_rayleigh < 1:
@@ -117,17 +121,112 @@ def compute_hv(
     prec_in = np.float32(precision * 100.0)
 
     hv_out = _hv_core.compute_hv(
-        alfa_in    = model.alfa,
-        bta_in     = model.bta,
-        h_in       = h_full,
-        rho_in     = model.rho,
-        x_in       = x_in,
-        nmr        = int(n_modes_rayleigh),
-        nml        = int(n_modes_love),
-        nks_in     = nks_in,
-        shdamp_in  = np.float32(sh_damp),
-        psvdamp_in = np.float32(psv_damp),
-        prec_in    = prec_in,
+        alfa_in=model.alfa,
+        bta_in=model.bta,
+        h_in=h_full,
+        rho_in=model.rho,
+        x_in=x_in,
+        nmr=int(n_modes_rayleigh),
+        nml=int(n_modes_love),
+        nks_in=nks_in,
+        shdamp_in=np.float32(sh_damp),
+        psvdamp_in=np.float32(psv_damp),
+        prec_in=prec_in,
     )
 
     return HVResult(freq=freq, hv=hv_out)
+
+
+def compute_hv_batch(
+    models: list[Model],
+    *,
+    n_workers: int | None = None,
+    freq_min: float = 0.1,
+    freq_max: float = 20.0,
+    n_freq: int = 100,
+    n_modes_rayleigh: int = 20,
+    n_modes_love: int = 20,
+    include_body_waves: bool = True,
+    nks: int = 256,
+    sh_damp: float = 1e-3,
+    psv_damp: float = 1e-3,
+    precision: float = 1e-6,
+) -> list[HVResult]:
+    """Compute H/V for multiple models in parallel using threads.
+
+    Each model is evaluated in its own OS thread.  The Fortran extension
+    is compiled with ``threadsafe`` (GIL released) and all module-level
+    state is ``!$OMP THREADPRIVATE``, so threads have fully isolated
+    Fortran state with zero IPC or pickling overhead.
+
+    Parameters
+    ----------
+    models : list[Model]
+        Earth models to evaluate.
+    n_workers : int | None
+        Maximum number of threads.  Defaults to ``os.cpu_count()``.
+    freq_min, freq_max, n_freq, n_modes_rayleigh, n_modes_love,
+    include_body_waves, nks, sh_damp, psv_damp, precision
+        Forwarded to :func:`compute_hv` — see its docstring for details.
+        All models are evaluated with the same computational parameters.
+
+    Returns
+    -------
+    list[HVResult]
+        One result per model, in the same order as *models*.
+
+    Notes
+    -----
+    ``OMP_NUM_THREADS`` is temporarily set to ``"1"`` to suppress the
+    residual inner OpenMP pragma inside the read-only submodule file
+    ``GL.f90`` (Love-wave Green's functions).  This prevents thread
+    over-subscription when many models run concurrently.  The original
+    value is restored after the batch completes.
+
+    For inversion loops, pass ``n_workers`` once and reuse the same call
+    site — the ``ThreadPoolExecutor`` is lightweight and creation cost
+    is negligible (~µs).
+
+    Examples
+    --------
+    >>> from pyhvdfa import compute_hv_batch, Model, Layer
+    >>> models = [
+    ...     Model.from_layers([
+    ...         Layer(thickness=h, vp=600.0, vs=200.0, density=1800.0),
+    ...         Layer(thickness=0.0, vp=2000.0, vs=800.0, density=2300.0),
+    ...     ])
+    ...     for h in [10.0, 20.0, 30.0, 40.0]
+    ... ]
+    >>> results = compute_hv_batch(models, n_workers=4)
+    >>> len(results)
+    4
+    """
+    if not models:
+        return []
+
+    n = n_workers or os.cpu_count() or 1
+    kwargs = dict(
+        freq_min=freq_min,
+        freq_max=freq_max,
+        n_freq=n_freq,
+        n_modes_rayleigh=n_modes_rayleigh,
+        n_modes_love=n_modes_love,
+        include_body_waves=include_body_waves,
+        nks=nks,
+        sh_damp=sh_damp,
+        psv_damp=psv_damp,
+        precision=precision,
+    )
+
+    # Suppress inner OpenMP (GL.f90) to avoid oversubscription.
+    old_omp = os.environ.get("OMP_NUM_THREADS")
+    os.environ["OMP_NUM_THREADS"] = "1"
+    try:
+        with ThreadPoolExecutor(max_workers=n) as executor:
+            futures = [executor.submit(compute_hv, model, **kwargs) for model in models]
+            return [f.result() for f in futures]
+    finally:
+        if old_omp is None:
+            os.environ.pop("OMP_NUM_THREADS", None)
+        else:
+            os.environ["OMP_NUM_THREADS"] = old_omp

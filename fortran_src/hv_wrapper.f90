@@ -12,7 +12,10 @@
 ! ==============================================================================
 
       ! ---- HV-DFA source files (unchanged) ----
-      INCLUDE './HV-DFA/modules.f90'
+      ! modules_patched.f90 is a local patched copy of HV-DFA/modules.f90
+      ! with !$OMP THREADPRIVATE added to all mutable module variables.
+      ! This enables concurrent COMPUTE_HV calls from multiple Python threads.
+      INCLUDE './modules_patched.f90'
       INCLUDE './HV-DFA/aux_procedures.f90'
       INCLUDE './HV-DFA/Dispersion.f90'
       INCLUDE './HV-DFA/RootSolverTemplate.f90'
@@ -83,6 +86,7 @@
                     ALFA,BTA,H,RHO,MU,NCAPAS,G_NMODES,ISRAYLEIGH,    &
                     G_DX,G_PRECISION,G_SLOWS,G_SLOWP
       USE Globales,ONLY:SHDAMP,PSVDAMP,PI
+!$ USE OMP_LIB, ONLY: OMP_SET_NUM_THREADS
       IMPLICIT NONE
 
       ! ---- Input arguments ----
@@ -123,6 +127,12 @@
 
       ! ---- Initialise counters ----
       NM_R=0;NM_L=0;NM_RL=0
+
+      ! Suppress inner OpenMP parallelism (e.g. GL.f90's !$OMP PARALLEL DO)
+      ! so that THREADPRIVATE module variables are not accessed from
+      ! uninitialised worker threads.  Outer-level parallelism over models
+      ! is handled by Python's ThreadPoolExecutor.
+!$    CALL OMP_SET_NUM_THREADS(1)
 
       ! ---- Populate module Marc -------------------------------------------
       NCAPAS=NCAPAS_IN
@@ -257,11 +267,11 @@
       ! ==== BODY-WAVE INTEGRALS =============================================
       ALLOCATE(IMVV(G_NX),IMHPSV(G_NX),IMHSH(G_NX))
       IF(NKS_IN>0)THEN
-        !$OMP PARALLEL DO
+        ! Inner-loop OpenMP removed: parallelism is applied at the
+        ! model-batch level instead (see compute_hv_batch in __init__.py).
         DO INDXX=1,G_NX
           CALL BWR(IMVV(INDXX),IMHPSV(INDXX),IMHSH(INDXX),NKS_IN,X(INDXX))
         ENDDO
-        !$OMP END PARALLEL DO
       ELSE
         IMVV=0.D0;IMHPSV=0.D0;IMHSH=0.D0
       ENDIF

@@ -34,11 +34,12 @@ pyhvdfa/
   meson.build             # root meson build: f2py custom_target + subdir
   fortran_src/
     hv_wrapper.f90        # single-unit entry point: COMPUTE_HV subroutine
+    modules_patched.f90   # patched copy of HV-DFA/modules.f90 + !$OMP THREADPRIVATE
     HV-DFA/               # git submodule → github.com/agarcia-jerez/HV-DFA (read-only)
   src/
     pyhvdfa/
-      __init__.py         # public API: compute_hv(), Layer, Model, HVResult
-      _types.py           # Layer, Model, HVResult dataclasses (no Numba)
+      __init__.py         # public API: compute_hv(), compute_hv_batch(), Layer, Model, HVResult
+      _types.py           # Layer, Model, HVResult dataclasses
       hv_core.pyf         # f2py signature file for COMPUTE_HV
       _hv_core.pyi        # type stubs for the compiled extension (IDE support)
       meson.build         # builds _hv_core extension + installs Python files
@@ -56,6 +57,7 @@ pyhvdfa/
     01_quickstart.ipynb
     02_model_comparison.ipynb
     03_parameter_sensitivity.ipynb
+    04_batch_parallel.ipynb
 ```
 
 ---
@@ -68,7 +70,9 @@ hv_wrapper.f90 + HV-DFA/*.f90    →  compiled Fortran objects
 _hv_coremodule.c + fortranobject.c + Fortran objects  →  _hv_core.<tag>.so
 ```
 
-`hv_wrapper.f90` uses `INCLUDE './HV-DFA/modules.f90'` etc., so the
+`hv_wrapper.f90` uses `INCLUDE './modules_patched.f90'` (a local patched copy of
+`HV-DFA/modules.f90` with `!$OMP THREADPRIVATE` directives) and
+`INCLUDE './HV-DFA/…'` for all other source files, so the
 `fortran_src/HV-DFA/` subdirectory must exist. It is populated automatically
 when cloning with `git clone --recurse-submodules` or by running
 `git submodule update --init` after a plain clone.
@@ -93,7 +97,7 @@ uvx cibuildwheel --platform linux   # or macos / windows
 ## Public API
 
 ```python
-from pyhvdfa import compute_hv, Model, Layer, HVResult
+from pyhvdfa import compute_hv, compute_hv_batch, Model, Layer, HVResult
 
 model = Model.from_layers([
     Layer(thickness=30.0, vp=600.0, vs=200.0, density=1800.0),
@@ -103,6 +107,9 @@ model = Model.from_layers([
 result = compute_hv(model, freq_min=0.1, freq_max=20.0, n_freq=100)
 # result.freq  — np.ndarray (Hz)
 # result.hv    — np.ndarray (H/V ratio)
+
+# Batch evaluation (thread-parallel, ideal for inversion loops)
+results = compute_hv_batch([model_a, model_b, model_c], n_workers=4)
 ```
 
 ### `compute_hv` parameters
@@ -127,6 +134,23 @@ Fortran's `COMPUTE_HV` takes it as a percentage and then applies `G_PRECISION = 
 `model.h` has shape `(n-1,)` (halfspace excluded); `__init__.py` pads it with 0.0
 to shape `(n,)` before passing to Fortran.
 
+### `compute_hv_batch`
+
+Thread-parallel evaluation of multiple models.  Uses `ThreadPoolExecutor` — no
+process forking, no pickling, no IPC.  Safe because the Fortran extension is
+compiled with `threadsafe` (GIL released) and all module-level state is
+`!$OMP THREADPRIVATE` (each thread has its own copy).
+
+| Parameter | Type | Default | Notes |
+|---|---|---|---|
+| `models` | `list[Model]` | — | Earth models to evaluate |
+| `n_workers` | `int \| None` | `cpu_count()` | Max concurrent threads |
+| *(all compute_hv params)* | | | Same freq/mode/body-wave settings for every model |
+
+`OMP_NUM_THREADS` is temporarily set to `"1"` inside `compute_hv_batch` to
+suppress the residual inner OpenMP pragma in the read-only submodule file
+`GL.f90`.  The original value is restored on exit.
+
 ### `HVResult`
 
 Only two fields — the Fortran extension returns the assembled H/V array; intermediate
@@ -143,8 +167,6 @@ class HVResult:
 
 ## `_types.py` Contract
 
-- **Never import Numba** here. This module must be importable in both regular Python
-  and any future JIT context without side effects.
 - `Layer` and `Model` are plain dataclasses with NumPy arrays (float64).
 - `Model` validates that it has at least 2 layers (one layer + halfspace) and that
   `len(h) == n - 1`.
@@ -157,6 +179,8 @@ class HVResult:
 The `.pyf` signature file is the source of truth for the f2py-generated C bridge.
 Key decisions encoded there:
 
+- The `threadsafe` directive causes f2py to release the GIL before calling
+  the Fortran subroutine, enabling concurrent calls from Python threads.
 - `ncapas_in` and `nx_in` are `intent(hide)` — Python callers never pass them;
   f2py derives them from the array lengths of `alfa_in` and `x_in` respectively.
 - `x_in` is `real(4)` (float32) — matches Fortran `REAL` (single precision).
@@ -164,6 +188,32 @@ Key decisions encoded there:
   Fortran `REAL(LONG_FLOAT)` from `modules.f90`.
 
 Do not change these types without also updating `_hv_core.pyi` and `__init__.py`.
+
+---
+
+## Thread Safety & `modules_patched.f90`
+
+`fortran_src/modules_patched.f90` is a **local patched copy** of the upstream
+`HV-DFA/modules.f90` with `!$OMP THREADPRIVATE` directives added to every
+mutable variable in `module globales` and `MODULE Marc`.  This gives each OS
+thread an isolated copy of all Fortran module state, enabling safe concurrent
+calls to `COMPUTE_HV`.
+
+The original inner `!$OMP PARALLEL DO` in `hv_wrapper.f90` (body-wave loop)
+has been removed — parallelism is applied at the model-batch level instead.
+`COMPUTE_HV` also calls `OMP_SET_NUM_THREADS(1)` at entry to suppress the
+residual `!$OMP PARALLEL DO` in the read-only submodule file `GL.f90`, which
+would otherwise spawn OpenMP worker threads that have uninitialised
+`THREADPRIVATE` copies of the `Marc` module variables.
+
+**Keeping the patch in sync:** if the submodule pointer is ever bumped, verify
+that `modules_patched.f90` matches the new upstream `modules.f90` (excluding
+the `THREADPRIVATE` lines).  A CI check can automate this:
+```bash
+diff <(grep -v 'OMP THREADPRIVATE' fortran_src/modules_patched.f90 | \
+       grep -v '^! ===' | grep -v 'thread-safe\|THREADPRIVATE\|Source\|Garcia') \
+     fortran_src/HV-DFA/modules.f90
+```
 
 ---
 

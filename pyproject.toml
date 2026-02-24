@@ -8,7 +8,7 @@ build-backend = "mesonpy"
 # ---------------------------------------------------------------------------
 [project]
 name = "pyhvdfa"
-version = "0.1.0"
+version = "0.1.1"
 description = "Diffuse-field H/V spectral ratio – Python wrapper for HV-DFA"
 readme = "README.md"
 license = { file = "LICENSE" }

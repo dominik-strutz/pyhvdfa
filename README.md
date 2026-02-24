@@ -18,25 +18,25 @@ The computationally-intensive work is done entirely by the original Fortran code
 
 ### Pre-built wheel (recommended)
 
-Pre-built wheels for **v0.1.0** are available for Python 3.9–3.13 on Linux
+Pre-built wheels for **v0.1.1** are available for Python 3.9–3.13 on Linux
 (x86-64 and aarch64, glibc and musl) — no Fortran compiler needed.
 
 ```bash
 # pip — automatically picks the right wheel for your Python version and platform
-pip install pyhvdfa --find-links https://github.com/dominik-strutz/pyhvdfa/releases/expanded_assets/v0.1.0
+pip install pyhvdfa --find-links https://github.com/dominik-strutz/pyhvdfa/releases/expanded_assets/v0.1.1
 
 # uv
-uv add pyhvdfa --find-links https://github.com/dominik-strutz/pyhvdfa/releases/expanded_assets/v0.1.0
+uv add pyhvdfa --find-links https://github.com/dominik-strutz/pyhvdfa/releases/expanded_assets/v0.1.1
 ```
 
 Or install a specific wheel directly (replace `cp312` with your Python version and
 choose `manylinux_2_28` for standard Linux / `musllinux_1_2` for Alpine-based systems):
 
 ```bash
-pip install https://github.com/dominik-strutz/pyhvdfa/releases/download/v0.1.0/pyhvdfa-0.1.0-cp312-cp312-manylinux_2_28_x86_64.whl
+pip install https://github.com/dominik-strutz/pyhvdfa/releases/download/v0.1.1/pyhvdfa-0.1.1-cp312-cp312-manylinux_2_28_x86_64.whl
 ```
 
-All available wheels are listed on the [Releases page](https://github.com/dominik-strutz/pyhvdfa/releases/tag/v0.1.0).
+All available wheels are listed on the [Releases page](https://github.com/dominik-strutz/pyhvdfa/releases/tag/v0.1.1).
 
 ---
 
@@ -84,6 +84,16 @@ print(result.freq[:5])   # Hz
 print(result.hv[:5])     # H/V ratio
 ```
 
+For parallel evaluation of many models (e.g. in an inversion loop):
+
+```python
+from pyhvdfa import compute_hv_batch
+
+models = [make_model(h) for h in thicknesses]  # list of Model objects
+results = compute_hv_batch(models, n_workers=8, freq_min=0.1, freq_max=20.0, n_freq=100)
+# returns list[HVResult], evaluated concurrently across OS threads
+```
+
 ## API reference
 
 ### `compute_hv`
@@ -118,6 +128,30 @@ compute_hv(
 | `psv_damp` | `1e-5` | P-SV imaginary-frequency damping fraction |
 | `precision` | `1e-6` | Slowness root-search tolerance (fractional) |
 
+### `compute_hv_batch`
+
+```python
+compute_hv_batch(
+    models,           # list[Model]
+    n_workers=None,   # int | None — defaults to os.cpu_count()
+    # all compute_hv keyword arguments apply to every model
+    freq_min=0.1,
+    freq_max=20.0,
+    n_freq=100,
+    ...
+) -> list[HVResult]
+```
+
+Evaluates multiple models in parallel using OS threads. Each thread gets its own
+isolated copy of all Fortran module state (`!$OMP THREADPRIVATE`), so there is no
+IPC, no pickling, and no fork overhead. Ideal for inversion loops.
+
+| Parameter | Default | Description |
+|---|---|---|
+| `models` | — | List of `Model` instances to evaluate |
+| `n_workers` | `cpu_count()` | Maximum concurrent threads |
+| *(all `compute_hv` params)* | same defaults | Applied identically to every model |
+
 ### `HVResult`
 
 ```python
@@ -150,6 +184,7 @@ Model.from_file(path)                          # plain-text model file
 | [examples/01_quickstart.ipynb](examples/01_quickstart.ipynb) | Basic two-layer model and H/V curve |
 | [examples/02_model_comparison.ipynb](examples/02_model_comparison.ipynb) | Comparing multiple velocity models |
 | [examples/03_parameter_sensitivity.ipynb](examples/03_parameter_sensitivity.ipynb) | Sensitivity of the H/V peak to model parameters |
+| [examples/04_batch_parallel.ipynb](examples/04_batch_parallel.ipynb) | Parallel batch evaluation, speedup scaling, inversion-style loop |
 
 ## Running tests
 
