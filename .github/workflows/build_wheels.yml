@@ -18,7 +18,7 @@ jobs:
             arch: x86_64
           - os: ubuntu-latest
             arch: aarch64
-          - os: macos-13
+          - os: macos-15-intel
             arch: x86_64
           - os: macos-14
             arch: arm64
@@ -42,12 +42,10 @@ jobs:
         run: choco install mingw -y --no-progress
         shell: cmd
 
-      - name: Install uv (macOS)
-        if: startsWith(matrix.os, 'macos')
-        uses: astral-sh/setup-uv@v5
-
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.22.0
+        with:
+          extras: uv
         env:
           CIBW_ARCHS: ${{ matrix.arch }}
           CIBW_ENVIRONMENT_WINDOWS: >-

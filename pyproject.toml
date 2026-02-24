@@ -85,7 +85,7 @@ before-all = "dnf install -y gcc-gfortran || apk add gfortran"
 
 [tool.cibuildwheel.macos]
 before-all = "brew install gcc"
-environment = { MACOSX_DEPLOYMENT_TARGET = "12.0" }
+environment = { MACOSX_DEPLOYMENT_TARGET = "12.0", FC = "gfortran", CC = "gcc", PATH = "/opt/homebrew/bin:/usr/local/bin:$PATH" }
 
 [tool.cibuildwheel.windows]
 # gfortran is installed via a workflow step before cibuildwheel runs
