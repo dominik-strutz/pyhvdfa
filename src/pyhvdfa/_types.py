@@ -12,15 +12,15 @@ Fortran equivalent: modules.f90 (module TYPES, module globales)
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Sequence
 
 import numpy as np
 
 # ── dtype aliases ──────────────────────────────────────────────────────────────
-FLOAT = np.float64    # kind(0.0d0) in Fortran
-CMPLX = np.complex128 # kind((0.0d0,0.0d0)) in Fortran
+FLOAT = np.float64  # kind(0.0d0) in Fortran
+CMPLX = np.complex128  # kind((0.0d0,0.0d0)) in Fortran
 
 # Imaginary unit — matches "i = (0,1)" in globales
 I_UNIT = np.complex128(1j)
@@ -47,6 +47,7 @@ class Layer:
     density : float
         Density in kg/m³.
     """
+
     thickness: float
     vp: float
     vs: float
@@ -69,30 +70,31 @@ class Model:
     mu   : np.ndarray, shape (n,)   Shear moduli (Pa) = rho * bta²
     n    : int                      Total number of layers including halfspace
     """
+
     alfa: np.ndarray  # shape (n,)
-    bta:  np.ndarray  # shape (n,)
-    rho:  np.ndarray  # shape (n,)
-    h:    np.ndarray  # shape (n-1,)  thicknesses, halfspace excluded
-    mu:   np.ndarray = field(init=False)  # shape (n,)
-    n:    int = field(init=False)
+    bta: np.ndarray  # shape (n,)
+    rho: np.ndarray  # shape (n,)
+    h: np.ndarray  # shape (n-1,)  thicknesses, halfspace excluded
+    mu: np.ndarray = field(init=False)  # shape (n,)
+    n: int = field(init=False)
 
     def __post_init__(self) -> None:
         self.alfa = np.asarray(self.alfa, dtype=FLOAT)
-        self.bta  = np.asarray(self.bta,  dtype=FLOAT)
-        self.rho  = np.asarray(self.rho,  dtype=FLOAT)
-        self.h    = np.asarray(self.h,    dtype=FLOAT)
-        self.n    = len(self.alfa)
+        self.bta = np.asarray(self.bta, dtype=FLOAT)
+        self.rho = np.asarray(self.rho, dtype=FLOAT)
+        self.h = np.asarray(self.h, dtype=FLOAT)
+        self.n = len(self.alfa)
         if self.n < 2:
-            raise ValueError("Model must have at least 2 layers (one layer + halfspace).")
-        if len(self.h) != self.n - 1:
             raise ValueError(
-                f"h must have n-1={self.n-1} elements, got {len(self.h)}."
+                "Model must have at least 2 layers (one layer + halfspace)."
             )
+        if len(self.h) != self.n - 1:
+            raise ValueError(f"h must have n-1={self.n-1} elements, got {len(self.h)}.")
         self.mu = self.rho * self.bta**2
 
     # ── factory methods ────────────────────────────────────────────────────────
     @classmethod
-    def from_layers(cls, layers: Sequence[Layer]) -> "Model":
+    def from_layers(cls, layers: Sequence[Layer]) -> Model:
         """Build a Model from a list of Layer objects.
 
         The last element must be the halfspace (thickness is ignored).
@@ -106,15 +108,15 @@ class Model:
         """
         if len(layers) < 2:
             raise ValueError("Need at least one layer plus a halfspace.")
-        alfa    = np.array([l.vp       for l in layers], dtype=FLOAT)
-        bta     = np.array([l.vs       for l in layers], dtype=FLOAT)
-        rho     = np.array([l.density  for l in layers], dtype=FLOAT)
+        alfa = np.array([lay.vp for lay in layers], dtype=FLOAT)
+        bta = np.array([lay.vs for lay in layers], dtype=FLOAT)
+        rho = np.array([lay.density for lay in layers], dtype=FLOAT)
         # thicknesses: all except the halfspace
-        h       = np.array([l.thickness for l in layers[:-1]], dtype=FLOAT)
+        h = np.array([lay.thickness for lay in layers[:-1]], dtype=FLOAT)
         return cls(alfa=alfa, bta=bta, rho=rho, h=h)
 
     @classmethod
-    def from_file(cls, path: str | Path) -> "Model":
+    def from_file(cls, path: str | Path) -> Model:
         """Read a model from the Fortran-format text file.
 
         File format (same as HV-DFA ``-f`` option)::
@@ -127,34 +129,38 @@ class Model:
         """
         path = Path(path)
         with open(path) as fh:
-            lines = [l.strip() for l in fh if l.strip() and not l.startswith("#")]
+            lines = [
+                lay.strip() for lay in fh if lay.strip() and not lay.startswith("#")
+            ]
         n = int(lines[0])
         if len(lines) - 1 < n:
-            raise ValueError(f"File declares {n} layers but only {len(lines)-1} data lines found.")
+            raise ValueError(
+                f"File declares {n} layers but only {len(lines)-1} data lines found."
+            )
         rows = [list(map(float, lines[i + 1].split())) for i in range(n)]
-        h    = np.array([row[0] for row in rows[:-1]], dtype=FLOAT)
-        vp   = np.array([row[1] for row in rows], dtype=FLOAT)
-        vs   = np.array([row[2] for row in rows], dtype=FLOAT)
+        h = np.array([row[0] for row in rows[:-1]], dtype=FLOAT)
+        vp = np.array([row[1] for row in rows], dtype=FLOAT)
+        vs = np.array([row[2] for row in rows], dtype=FLOAT)
         dens = np.array([row[3] for row in rows], dtype=FLOAT)
         return cls(alfa=vp, bta=vs, rho=dens, h=h)
 
     @classmethod
     def from_arrays(
         cls,
-        vp:       Sequence[float],
-        vs:       Sequence[float],
-        density:  Sequence[float],
+        vp: Sequence[float],
+        vs: Sequence[float],
+        density: Sequence[float],
         thickness: Sequence[float],
-    ) -> "Model":
+    ) -> Model:
         """Build from plain lists/arrays.
 
         ``thickness`` must have ``len(vp) - 1`` elements (halfspace excluded).
         """
         return cls(
-            alfa=np.asarray(vp,        dtype=FLOAT),
-            bta =np.asarray(vs,        dtype=FLOAT),
-            rho =np.asarray(density,   dtype=FLOAT),
-            h   =np.asarray(thickness, dtype=FLOAT),
+            alfa=np.asarray(vp, dtype=FLOAT),
+            bta=np.asarray(vs, dtype=FLOAT),
+            rho=np.asarray(density, dtype=FLOAT),
+            h=np.asarray(thickness, dtype=FLOAT),
         )
 
 
@@ -174,5 +180,6 @@ class HVResult:
         H/V spectral ratio, shape *(n_freq,)*.  Values may be NaN at frequencies
         below the fundamental-mode cutoff or where no valid slowness was found.
     """
+
     freq: np.ndarray
-    hv:   np.ndarray
+    hv: np.ndarray

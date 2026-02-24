@@ -7,16 +7,16 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from pyhvdfa._types import Layer, Model, HVResult
+from pyhvdfa._types import HVResult, Layer, Model
 
 
 class TestLayer:
     def test_construct(self):
-        l = Layer(10.0, 400.0, 200.0, 1800.0)
-        assert l.thickness == 10.0
-        assert l.vp == 400.0
-        assert l.vs == 200.0
-        assert l.density == 1800.0
+        lay = Layer(10.0, 400.0, 200.0, 1800.0)
+        assert lay.thickness == 10.0
+        assert lay.vp == 400.0
+        assert lay.vs == 200.0
+        assert lay.density == 1800.0
 
 
 class TestModel:
@@ -34,7 +34,7 @@ class TestModel:
     def test_from_arrays(self):
         m = Model.from_arrays(
             vp=[500.0, 1800.0],
-            vs=[200.0,  800.0],
+            vs=[200.0, 800.0],
             density=[1800.0, 2200.0],
             thickness=[20.0],
         )
@@ -49,9 +49,9 @@ class TestModel:
         with pytest.raises(ValueError):
             Model(
                 alfa=np.array([500.0, 1800.0]),
-                bta =np.array([200.0,  800.0]),
-                rho =np.array([1800.0, 2200.0]),
-                h   =np.array([20.0, 10.0]),   # should be length 1
+                bta=np.array([200.0, 800.0]),
+                rho=np.array([1800.0, 2200.0]),
+                h=np.array([20.0, 10.0]),  # should be length 1
             )
 
     def test_from_file(self, tmp_path):
@@ -66,7 +66,7 @@ class TestModel:
 class TestHVResult:
     def test_construct(self):
         freq = np.array([1.0, 2.0, 3.0])
-        hv   = np.array([1.5, 2.0, 1.8])
+        hv = np.array([1.5, 2.0, 1.8])
         r = HVResult(freq=freq, hv=hv)
         np.testing.assert_array_equal(r.freq, freq)
         np.testing.assert_array_equal(r.hv, hv)
