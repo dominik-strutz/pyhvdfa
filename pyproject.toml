@@ -84,12 +84,21 @@ manylinux-aarch64-image = "manylinux_2_28"
 before-all = "dnf install -y gcc-gfortran || apk add gfortran"
 
 [tool.cibuildwheel.macos]
-before-all = "brew install gcc"
-environment = { MACOSX_DEPLOYMENT_TARGET = "12.0", FC = "gfortran", CC = "gcc", PATH = "/opt/homebrew/bin:/usr/local/bin:$PATH" }
+# brew only ships gfortran-15 (versioned); create an unversioned symlink so
+# meson finds it via FC=gfortran. Do NOT set CC=gcc: Python on macOS is
+# compiled with Apple Clang, so the C parts must also use Clang.
+before-all = [
+  "brew install gcc",
+  "ln -sf $(brew --prefix gcc)/bin/gfortran-* /usr/local/bin/gfortran",
+]
+environment = { MACOSX_DEPLOYMENT_TARGET = "12.0", FC = "gfortran" }
 
 [tool.cibuildwheel.windows]
-# gfortran is installed via a workflow step before cibuildwheel runs
-environment = { FC = "gfortran", CC = "gcc" }
+# gfortran/gcc come from the mingw64 choco package installed in the workflow.
+# Use forward-slashes: cibuildwheel evaluates env values via bash even on
+# Windows, so backslashes are consumed as escape chars.
+# Use $PATH (bash syntax), not {PATH}.
+environment = { FC = "gfortran", CC = "gcc", PATH = 'C:/ProgramData/chocolatey/lib/mingw/tools/install/mingw64/bin;$PATH' }
 
 # ---------------------------------------------------------------------------
 # ruff — linting and formatting
