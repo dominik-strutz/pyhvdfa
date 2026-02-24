@@ -52,10 +52,6 @@ jobs:
         uses: pypa/cibuildwheel@v2.22.0
         env:
           CIBW_ARCHS: ${{ matrix.arch }}
-          CIBW_ENVIRONMENT_WINDOWS: >-
-            FC="gfortran"
-            CC="gcc"
-            PATH="C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin;{PATH}"
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
