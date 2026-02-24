@@ -6,6 +6,8 @@ Python wrapper around [HV-DFA](https://github.com/agarcia-jerez/HV-DFA) (García
 
 The computationally-intensive work is done entirely by the original Fortran code compiled as a Python extension via f2py + meson. The Python layer handles input validation, array construction, and typed result dataclasses.
 
+> **Disclaimer**: I relied heavily on LLM assistance to write the Python wrapper and build system, so I can not guarantee the correctness of either. However, the underlying Fortran code is unchanged and the wrapper is tested against the original code on a variety of models, so I am reasonably confident in the results.
+
 ## Requirements
 
 - Python ≥ 3.9
