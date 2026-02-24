@@ -183,10 +183,15 @@ the authors of HV-DFA directly.
 
 ## References
 
+
+
+<!-- 
+Francisco J. Sánchez-Sesma, Miguel Rodríguez, Ursula Iturrarán-Viveros, Francisco Luzón, Michel Campillo, Ludovic Margerin, Antonio García-Jerez, Martha Suarez, Miguel A. Santoyo, Alejandro Rodríguez-Castellanos, A theory for microtremor H/V spectral ratio: application for a layered medium, Geophysical Journal International, Volume 186, Issue 1, July 2011, Pages 221–225, https://doi.org/10.1111/j.1365-246X.2011.05064.x  -->
+
 - Sánchez-Sesma, F.J. et al. (2011). A theory for microtremor H/V spectral ratio:
   application for a layered medium. *Geophysical Journal International*, 186(1), 221–225.
-  <https://doi.org/10.1111/j.1365-246X.2011.05064.x\>
+  <https://doi.org/10.1111/j.1365-246X.2011.05064.x>
 - García-Jerez, A. et al. (2016). A computer code for forward calculation and
   inversion of the H/V spectral ratio under the diffuse field assumption.
   *Computers & Geosciences*, 97, 67–78.
-  <https://doi.org/10.1016/j.cageo.2016.06.016\>
+  <https://doi.org/10.1016/j.cageo.2016.06.016>
