@@ -18,24 +18,25 @@ The computationally-intensive work is done entirely by the original Fortran code
 
 ### Pre-built wheel (recommended)
 
-Wheels are provided for Python 3.9–3.13 on Linux (x86-64), macOS (x86-64 / arm64),
-and Windows (x86-64) — no Fortran compiler needed.
-
-1. Go to the [Releases page](https://github.com/dominik-strutz/pyhvdfa/releases) and
-   find the latest release.
-2. Under **Assets**, right-click the `.whl` that matches your platform and Python
-   version and copy the link.
-3. Install directly from that URL — no manual download required:
+Pre-built wheels for **v0.1.0** are available for Python 3.9–3.13 on Linux
+(x86-64 and aarch64, glibc and musl) — no Fortran compiler needed.
 
 ```bash
-# uv
-uv add https://github.com/dominik-strutz/pyhvdfa/releases/download/vX.Y.Z/pyhvdfa-X.Y.Z-cpXXX-...-linux_x86_64.whl
+# pip — automatically picks the right wheel for your Python version and platform
+pip install pyhvdfa --find-links https://github.com/dominik-strutz/pyhvdfa/releases/expanded_assets/v0.1.0
 
-# pip
-pip install https://github.com/dominik-strutz/pyhvdfa/releases/download/vX.Y.Z/pyhvdfa-X.Y.Z-cpXXX-...-linux_x86_64.whl
+# uv
+uv add pyhvdfa --find-links https://github.com/dominik-strutz/pyhvdfa/releases/expanded_assets/v0.1.0
 ```
 
-Replace the URL with the one you copied in step 2.
+Or install a specific wheel directly (replace `cp312` with your Python version and
+choose `manylinux_2_28` for standard Linux / `musllinux_1_2` for Alpine-based systems):
+
+```bash
+pip install https://github.com/dominik-strutz/pyhvdfa/releases/download/v0.1.0/pyhvdfa-0.1.0-cp312-cp312-manylinux_2_28_x86_64.whl
+```
+
+All available wheels are listed on the [Releases page](https://github.com/dominik-strutz/pyhvdfa/releases/tag/v0.1.0).
 
 ---
 
@@ -159,9 +160,9 @@ uv run pytest --cov=pyhvdfa --cov-report=term-missing
 
 ## Building wheels
 
-Wheels for Python 3.9–3.13 on Linux, macOS, and Windows are built automatically
-by GitHub Actions on every `v*.*.*` tag and attached to the corresponding
-[GitHub Release](https://github.com/dominik-strutz/pyhvdfa/releases).
+Wheels for Python 3.9–3.13 on Linux (x86-64 / aarch64, glibc and musl) are built
+automatically by GitHub Actions on every `v*.*.*` tag and attached to the
+corresponding [GitHub Release](https://github.com/dominik-strutz/pyhvdfa/releases).
 
 To build locally:
 
