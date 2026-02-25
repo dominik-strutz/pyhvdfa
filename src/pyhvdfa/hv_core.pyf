@@ -14,7 +14,7 @@ python module _hv_core
     subroutine compute_hv(ncapas_in, alfa_in, bta_in, h_in, rho_in,  &
                           nx_in, x_in, nmr, nml, nks_in,              &
                           shdamp_in, psvdamp_in, prec_in,              &
-                          hv_out)
+                          nthreads_in, hv_out)
       ! Release the GIL so multiple threads can call COMPUTE_HV
       ! concurrently (requires THREADPRIVATE module variables).
       threadsafe
@@ -33,7 +33,38 @@ python module _hv_core
       real(4) intent(in) :: shdamp_in
       real(4) intent(in) :: psvdamp_in
       real(4) intent(in) :: prec_in
+      integer intent(in) :: nthreads_in
       real(8) dimension(nx_in), depend(nx_in), intent(out) :: hv_out
     end subroutine compute_hv
+
+    subroutine compute_hv_batch(max_layers, n_models,                  &
+                                alfa_in2, bta_in2, h_in2, rho_in2,    &
+                                ncapas_arr,                            &
+                                nx_in, x_in, nmr, nml, nks_in,        &
+                                shdamp_in, psvdamp_in, prec_in,        &
+                                nthreads_in,                           &
+                                hv_out2)
+      ! Release the GIL: Fortran OMP team handles concurrency internally.
+      threadsafe
+      ! max_layers and n_models are hidden; derived from alfa_in2 shape
+      integer intent(hide), depend(alfa_in2) :: max_layers = shape(alfa_in2, 0)
+      integer intent(hide), depend(alfa_in2) :: n_models   = shape(alfa_in2, 1)
+      real(8) dimension(max_layers, n_models), intent(in) :: alfa_in2
+      real(8) dimension(max_layers, n_models), depend(max_layers, n_models), intent(in) :: bta_in2
+      real(8) dimension(max_layers, n_models), depend(max_layers, n_models), intent(in) :: h_in2
+      real(8) dimension(max_layers, n_models), depend(max_layers, n_models), intent(in) :: rho_in2
+      integer dimension(n_models), depend(n_models), intent(in) :: ncapas_arr
+      ! nx_in is hidden; derived from x_in
+      integer intent(hide), depend(x_in) :: nx_in = len(x_in)
+      real(4) dimension(nx_in), intent(in) :: x_in
+      integer intent(in) :: nmr
+      integer intent(in) :: nml
+      integer intent(in) :: nks_in
+      real(4) intent(in) :: shdamp_in
+      real(4) intent(in) :: psvdamp_in
+      real(4) intent(in) :: prec_in
+      integer intent(in) :: nthreads_in
+      real(8) dimension(nx_in, n_models), depend(nx_in, n_models), intent(out) :: hv_out2
+    end subroutine compute_hv_batch
   end interface
 end python module _hv_core

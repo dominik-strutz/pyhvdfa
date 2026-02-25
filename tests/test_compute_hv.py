@@ -242,48 +242,6 @@ class TestComputeHVBatch:
         for r in results:
             assert np.sum(np.isfinite(r.hv)) > 0
 
-    def test_batch_omp_env_restored(self, four_models):
-        """OMP_NUM_THREADS must be restored to its original value after batch."""
-        original = os.environ.get("OMP_NUM_THREADS")
-        sentinel = "42"
-        os.environ["OMP_NUM_THREADS"] = sentinel
-        try:
-            compute_hv_batch(
-                four_models,
-                n_workers=2,
-                freq_min=0.5,
-                freq_max=10.0,
-                n_freq=10,
-                n_modes_rayleigh=1,
-                n_modes_love=0,
-                include_body_waves=False,
-            )
-            assert os.environ.get("OMP_NUM_THREADS") == sentinel
-        finally:
-            if original is None:
-                os.environ.pop("OMP_NUM_THREADS", None)
-            else:
-                os.environ["OMP_NUM_THREADS"] = original
-
-    def test_batch_omp_env_restored_when_unset(self, simple_2layer):
-        """OMP_NUM_THREADS removed after batch if it was not set before."""
-        original = os.environ.pop("OMP_NUM_THREADS", None)
-        try:
-            compute_hv_batch(
-                [simple_2layer],
-                n_workers=1,
-                freq_min=0.5,
-                freq_max=10.0,
-                n_freq=10,
-                n_modes_rayleigh=1,
-                n_modes_love=0,
-                include_body_waves=False,
-            )
-            assert "OMP_NUM_THREADS" not in os.environ
-        finally:
-            if original is not None:
-                os.environ["OMP_NUM_THREADS"] = original
-
     def test_batch_many_models(self):
         """Batch of 16 models — tests higher concurrency."""
         models = [

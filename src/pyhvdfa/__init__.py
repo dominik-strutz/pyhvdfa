@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import math
 import os
-from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
@@ -40,6 +39,7 @@ def compute_hv(
     sh_damp: float = 1e-3,
     psv_damp: float = 1e-3,
     precision: float = 1e-6,
+    n_workers: int = 1,
 ) -> HVResult:
     """Compute the H/V spectral ratio using the Diffuse Field Assumption.
 
@@ -78,6 +78,12 @@ def compute_hv(
         The Fortran standalone defaults to ``PREC = 1e-4`` (percent), which
         corresponds to ``G_PRECISION = 1e-6`` internally — so the Python
         default of ``1e-6`` reproduces that same effective tolerance.
+    n_workers : int
+        Number of OpenMP threads for the body-wave integral loop (default: 1).
+        Values > 1 parallelise the per-frequency ``BWR`` calls and are
+        effective only when *include_body_waves* is ``True``.  When using
+        :func:`compute_hv_batch`, keep this at 1 (the default) — the batch
+        function uses the same ``n_workers`` for model-level parallelism.
 
     Returns
     -------
@@ -132,6 +138,7 @@ def compute_hv(
         shdamp_in=np.float32(sh_damp),
         psvdamp_in=np.float32(psv_damp),
         prec_in=prec_in,
+        nthreads_in=int(n_workers),
     )
 
     return HVResult(freq=freq, hv=hv_out)
@@ -152,23 +159,24 @@ def compute_hv_batch(
     psv_damp: float = 1e-3,
     precision: float = 1e-6,
 ) -> list[HVResult]:
-    """Compute H/V for multiple models in parallel using threads.
+    """Compute H/V for multiple models in parallel using Fortran OpenMP.
 
-    Each model is evaluated in its own OS thread.  The Fortran extension
-    is compiled with ``threadsafe`` (GIL released) and all module-level
-    state is ``!$OMP THREADPRIVATE``, so threads have fully isolated
-    Fortran state with zero IPC or pickling overhead.
+    Models are evaluated concurrently via ``!$OMP PARALLEL DO`` inside the
+    Fortran ``COMPUTE_HV_BATCH`` subroutine.  The compiled extension is
+    built with ``threadsafe`` (GIL released) and all module-level state is
+    ``!$OMP THREADPRIVATE``, giving each OMP thread fully isolated Fortran
+    state with zero IPC or pickling overhead.
 
     Parameters
     ----------
     models : list[Model]
         Earth models to evaluate.
     n_workers : int | None
-        Maximum number of threads.  Defaults to ``os.cpu_count()``.
+        Number of OpenMP threads.  Defaults to ``os.cpu_count()``.
     freq_min, freq_max, n_freq, n_modes_rayleigh, n_modes_love,
     include_body_waves, nks, sh_damp, psv_damp, precision
-        Forwarded to :func:`compute_hv` — see its docstring for details.
-        All models are evaluated with the same computational parameters.
+        Forwarded to each model evaluation — see :func:`compute_hv` for
+        details.  All models are evaluated with the same parameters.
 
     Returns
     -------
@@ -177,15 +185,9 @@ def compute_hv_batch(
 
     Notes
     -----
-    ``OMP_NUM_THREADS`` is temporarily set to ``"1"`` to suppress the
-    residual inner OpenMP pragma inside the read-only submodule file
-    ``GL.f90`` (Love-wave Green's functions).  This prevents thread
-    over-subscription when many models run concurrently.  The original
-    value is restored after the batch completes.
-
-    For inversion loops, pass ``n_workers`` once and reuse the same call
-    site — the ``ThreadPoolExecutor`` is lightweight and creation cost
-    is negligible (~µs).
+    Each OMP worker thread calls ``COMPUTE_HV`` with ``NTHREADS_IN=1``,
+    keeping its inner body-wave and GL loops serial.  All *n_workers* cores
+    are therefore occupied at the model level rather than nested.
 
     Examples
     --------
@@ -205,28 +207,48 @@ def compute_hv_batch(
         return []
 
     n = n_workers or os.cpu_count() or 1
-    kwargs = dict(
-        freq_min=freq_min,
-        freq_max=freq_max,
-        n_freq=n_freq,
-        n_modes_rayleigh=n_modes_rayleigh,
-        n_modes_love=n_modes_love,
-        include_body_waves=include_body_waves,
-        nks=nks,
-        sh_damp=sh_damp,
-        psv_damp=psv_damp,
-        precision=precision,
+
+    # Shared frequency vector
+    freq = np.geomspace(freq_min, freq_max, n_freq)
+    x_in = (2.0 * math.pi * freq).astype(np.float32)
+    nks_in = int(nks) if include_body_waves else 0
+    prec_in = np.float32(precision * 100.0)
+
+    # Pack models into column-major 2-D arrays (zero-padded to max_layers).
+    # Each column i holds one model's data; ncapas_arr[i] is its true depth.
+    ncapas_arr = np.array([int(m.alfa.shape[0]) for m in models], dtype=np.int32)
+    max_layers = int(ncapas_arr.max())
+    n_models = len(models)
+
+    alfa_2d = np.zeros((max_layers, n_models), dtype=np.float64, order="F")
+    bta_2d  = np.zeros((max_layers, n_models), dtype=np.float64, order="F")
+    h_2d    = np.zeros((max_layers, n_models), dtype=np.float64, order="F")
+    rho_2d  = np.zeros((max_layers, n_models), dtype=np.float64, order="F")
+
+    for i, m in enumerate(models):
+        nc = ncapas_arr[i]
+        alfa_2d[:nc, i] = m.alfa
+        bta_2d [:nc, i] = m.bta
+        # Pad thickness with 0.0 for halfspace (COMPUTE_HV ignores last element)
+        h_full = np.append(m.h, 0.0)
+        h_2d   [:nc, i] = h_full
+        rho_2d [:nc, i] = m.rho
+
+    # Fortran returns shape (nx_in, n_models), column-major
+    hv_out2 = _hv_core.compute_hv_batch(
+        alfa_in2=alfa_2d,
+        bta_in2=bta_2d,
+        h_in2=h_2d,
+        rho_in2=rho_2d,
+        ncapas_arr=ncapas_arr,
+        x_in=x_in,
+        nmr=int(n_modes_rayleigh),
+        nml=int(n_modes_love),
+        nks_in=nks_in,
+        shdamp_in=np.float32(sh_damp),
+        psvdamp_in=np.float32(psv_damp),
+        prec_in=prec_in,
+        nthreads_in=n,
     )
 
-    # Suppress inner OpenMP (GL.f90) to avoid oversubscription.
-    old_omp = os.environ.get("OMP_NUM_THREADS")
-    os.environ["OMP_NUM_THREADS"] = "1"
-    try:
-        with ThreadPoolExecutor(max_workers=n) as executor:
-            futures = [executor.submit(compute_hv, model, **kwargs) for model in models]
-            return [f.result() for f in futures]
-    finally:
-        if old_omp is None:
-            os.environ.pop("OMP_NUM_THREADS", None)
-        else:
-            os.environ["OMP_NUM_THREADS"] = old_omp
+    return [HVResult(freq=freq, hv=hv_out2[:, i]) for i in range(n_models)]
